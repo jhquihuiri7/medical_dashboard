@@ -1,0 +1,174 @@
+import dash
+from dash import dcc, html, Input, Output
+
+import pandas as pd
+from datetime import datetime as dt
+import pathlib
+import plotly.express as px
+import plotly.graph_objects as go
+
+
+############# Elements
+def preprocesamiento(df):
+    # Llenar las categorias vacias con 'No Identificado'
+    df["Admit Source"] = df["Admit Source"].fillna("Not Identified")
+    # Date
+    # Formateo "checkin Time"
+    df["Check-In Time"] = df["Check-In Time"].apply(
+        lambda x: dt.strptime(x, "%Y-%m-%d %I:%M:%S %p")
+    )  # String -> Datetime
+
+    # Insertar día de la semana y hora del "Checking time"
+    df["Days of Wk"] = df["Check-In Hour"] = df["Check-In Time"]
+    df["Days of Wk"] = df["Days of Wk"].apply(
+        lambda x: dt.strftime(x, "%A")
+    )  # Datetime -> weekday string
+    df["Weekday Number"] = df["Check-In Time"].dt.dayofweek
+    df["Check-In Hour"] = df["Check-In Hour"].apply(
+        lambda x: dt.strftime(x, "%I %p")
+    )  # Datetime -> int(hour) + AM/PM
+    df["Hour"] = df["Check-In Hour"].str[:3]
+    df["Time"] = df["Check-In Hour"].str[3:]
+
+    return df
+
+
+# Path
+BASE_PATH = pathlib.Path(__file__).parent.resolve()
+DATA_PATH = BASE_PATH.joinpath("data").resolve()
+
+# Leer los datos y limpiarlos
+df = pd.read_csv(DATA_PATH.joinpath("clinical_analytics.csv.gz"))
+# realizar preprocesamiento de fecha
+df = preprocesamiento(df)
+
+nombres_clinicas = sorted(df["Clinic Name"].unique())
+admit_source = sorted(df["Admit Source"].unique())
+
+fig = px.imshow([[1, 20, 30], [20, 1, 60], [30, 60, 1]])
+#####################################################
+# Estructura App
+external_scripts = [{"src": "https://cdn.tailwindcss.com"}]
+app = dash.Dash(
+    __name__,
+    external_scripts=external_scripts,
+    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+)
+app.title = "Clinical Analytics Dashboard"
+app.layout = html.Div(
+    className="flex flex-col justify-around bg-white p-6 sm:flex-row",
+    children=[
+        html.Div(
+            children=[
+                html.H1("Clinical Analytics", className="text-[#2c8cff] text-4xl font-bold"),
+                html.H2(
+                    "Welcome to the Clinical Analytics Dashboard", className="text-5xl font-bold py-8"
+                ),
+                html.P(
+                    "Explore clinic patient volume by time of day, waiting time, and care score. Click on the heatmap to visualize patient experience at different time points.",
+                    className="text-justify pb-8"
+
+                ),
+                html.Label("Select Clinic", className="font-bold pb-5"),
+                dcc.Dropdown(
+                    nombres_clinicas,
+                    nombres_clinicas[0],
+                    id="clinic-dropdown",
+                    className="pb-8",
+                ),
+                html.Label("Select Check-In Time", className="font-bold pb-5"),
+                dcc.DatePickerRange(
+                    id="date-picker-range",
+                    className="pb-8",
+                    min_date_allowed=df["Check-In Time"].dt.date.min(),
+                    max_date_allowed=df["Check-In Time"].dt.date.max(),
+                    initial_visible_month=df["Check-In Time"].dt.date.min(),
+                    start_date=df["Check-In Time"].dt.date.min(),
+                    end_date=df["Check-In Time"].dt.date.max(),
+                ),
+                html.Label("Select Admit Source",className="font-bold pb-5"),
+                dcc.Dropdown(
+                    admit_source,
+                    admit_source,
+                    multi=True,
+                    id="admit-dropdown",
+                    className="",
+                ),
+            ],
+            className="flex-initial w-[100%] sm:w-[28%]",
+        ),
+        html.Div(children=[
+            html.H3("Patient Volume", className="font-bold text-center text-3xl"),
+            html.Hr(),
+            dcc.Graph(id="heat_map",
+                      config = {
+                          'displaylogo': False,
+                          'modeBarButtonsToRemove':['zoom', 'pan','autoScale','resetScale'],
+                          'toImageButtonOptions': {
+                              'format': 'png', # one of png, svg, jpeg, webp
+                              'filename': 'VolumenPacientes',
+                              'height': 700,
+                              'width': 1300,
+                              'scale': 1 # Multiply title/legend/axis/canvas sizes by this factor
+                            }
+                      })
+            ],
+            className="flex-initial w-[100%] sm:w-[70%]"
+        ),
+    ],
+)
+
+
+@app.callback(
+    Output("heat_map", "figure"),
+    Input("clinic-dropdown", "value"),
+    Input("date-picker-range", "start_date"),
+    Input("date-picker-range", "end_date"),
+    Input("admit-dropdown", "value"),
+)
+def data(clinic, start_date, end_date, admit):
+    date_filtered = df[
+        (df["Clinic Name"] == clinic)
+        & (df["Check-In Time"] >= start_date)
+        & (df["Check-In Time"] <= end_date)
+        & (df["Admit Source"].isin(admit))
+    ]
+    grouped = date_filtered.groupby(
+        ["Days of Wk", "Weekday Number", "Check-In Hour", "Hour", "Time"]
+    ).agg({"Number of Records": "sum"})
+    grouped = grouped.reset_index()
+    grouped_AM = grouped[grouped["Time"] == "AM"]
+    grouped_PM = grouped[grouped["Time"] == "PM"]
+    final = pd.concat([grouped_AM, grouped_PM], ignore_index=True)
+    original_row_order = final['Days of Wk'].unique()  # Preserves the original order of 'Y'
+    original_col_order = final['Check-In Hour'].unique()
+    heatmap_data = final.pivot_table(
+        index="Days of Wk",
+        columns="Check-In Hour",
+        values="Number of Records",
+        fill_value=0,
+    )
+    heatmap_data = heatmap_data.reindex(index=original_row_order, columns=original_col_order, fill_value=0)
+
+    fig = go.Figure(
+        go.Heatmap(z=heatmap_data.values, x=heatmap_data.columns ,y=heatmap_data.index, text=heatmap_data.values,texttemplate="%{text}",
+                    textfont={"size":12}, showscale=False),
+        layout=go.Layout(
+            xaxis=dict(
+                side='top',  # Place x-axis labels at the top
+                tickangle=-90
+            ),
+            margin=go.layout.Margin(
+                l=0, #left margin
+                r=0, #right margin
+                b=0, #bottom margin
+            )
+        )
+    )
+
+    return fig
+
+
+# Run the server
+if __name__ == "__main__":
+    app.run_server(port=8080)
