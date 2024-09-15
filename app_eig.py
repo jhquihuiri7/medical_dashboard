@@ -45,7 +45,6 @@ df = preprocesamiento(df)
 nombres_clinicas = sorted(df["Clinic Name"].unique())
 admit_source = sorted(df["Admit Source"].unique())
 
-fig = px.imshow([[1, 20, 30], [20, 1, 60], [30, 60, 1]])
 #####################################################
 # Estructura App
 external_scripts = [{"src": "https://cdn.tailwindcss.com"}]
@@ -60,14 +59,16 @@ app.layout = html.Div(
     children=[
         html.Div(
             children=[
-                html.H1("Clinical Analytics", className="text-[#2c8cff] text-4xl font-bold"),
+                html.H1(
+                    "Clinical Analytics", className="text-[#2c8cff] text-4xl font-bold"
+                ),
                 html.H2(
-                    "Welcome to the Clinical Analytics Dashboard", className="text-5xl font-bold py-8"
+                    "Welcome to the Clinical Analytics Dashboard",
+                    className="text-5xl font-bold py-8",
                 ),
                 html.P(
                     "Explore clinic patient volume by time of day, waiting time, and care score. Click on the heatmap to visualize patient experience at different time points.",
-                    className="text-justify pb-8"
-
+                    className="text-justify pb-8",
                 ),
                 html.Label("Select Clinic", className="font-bold pb-5"),
                 dcc.Dropdown(
@@ -86,7 +87,7 @@ app.layout = html.Div(
                     start_date=df["Check-In Time"].dt.date.min(),
                     end_date=df["Check-In Time"].dt.date.max(),
                 ),
-                html.Label("Select Admit Source",className="font-bold pb-5"),
+                html.Label("Select Admit Source", className="font-bold pb-5"),
                 dcc.Dropdown(
                     admit_source,
                     admit_source,
@@ -97,78 +98,126 @@ app.layout = html.Div(
             ],
             className="flex-initial w-[100%] sm:w-[28%]",
         ),
-        html.Div(children=[
-            html.H3("Patient Volume", className="font-bold text-center text-3xl"),
-            html.Hr(),
-            dcc.Graph(id="heat_map",
-                      config = {
-                          'displaylogo': False,
-                          'modeBarButtonsToRemove':['zoom', 'pan','autoScale','resetScale'],
-                          'toImageButtonOptions': {
-                              'format': 'png', # one of png, svg, jpeg, webp
-                              'filename': 'VolumenPacientes',
-                              'height': 700,
-                              'width': 1300,
-                              'scale': 1 # Multiply title/legend/axis/canvas sizes by this factor
-                            }
-                      })
+        html.Div(
+            children=[
+                html.H3("Patient Volume", className="font-bold text-center text-3xl"),
+                html.Hr(),
+                dcc.Graph(
+                    className="hidden sm:flex",
+                    id="heat_map",
+                    config={
+                        "displaylogo": False,
+                        "modeBarButtonsToRemove": [
+                            "zoom",
+                            "pan",
+                            "zoom"
+                            "autoScale",
+                            "resetScale",
+                        ],
+                        "toImageButtonOptions": {
+                            "format": "png",  # one of png, svg, jpeg, webp
+                            "filename": "VolumenPacientes",
+                            "height": 700,
+                            "width": 1300,
+                            "scale": 1,  # Multiply title/legend/axis/canvas sizes by this factor
+                        },
+                    },
+                ),
+                dcc.Graph(
+                    className="flex sm:hidden",
+                    id="heat_map_vertical",
+                    config={
+                        "displaylogo": False,
+                        "modeBarButtonsToRemove": [
+                            "zoom",
+                            "pan",
+                            "autoScale",
+                            "resetScale",
+                        ],
+                        "toImageButtonOptions": {
+                            "format": "png",  # one of png, svg, jpeg, webp
+                            "filename": "VolumenPacientes",
+                            "height": 700,
+                            "width": 1300,
+                            "scale": 1,  # Multiply title/legend/axis/canvas sizes by this factor
+                        },
+                    },
+                ),
             ],
-            className="flex-initial w-[100%] sm:w-[70%]"
+            className="flex-initial w-[100%] sm:w-[70%]",
         ),
     ],
 )
 
 
 @app.callback(
-    Output("heat_map", "figure"),
+    [Output("heat_map", "figure"),Output("heat_map_vertical", "figure")],
     Input("clinic-dropdown", "value"),
     Input("date-picker-range", "start_date"),
     Input("date-picker-range", "end_date"),
     Input("admit-dropdown", "value"),
 )
 def data(clinic, start_date, end_date, admit):
+    heatmap_data = get_heatmap_data(df, clinic, start_date, end_date, admit)
+    fig1 = draw_heatmap(heatmap_data.values, heatmap_data.columns, heatmap_data.index)
+    fig2 = draw_heatmap(heatmap_data.values.T, heatmap_data.index, heatmap_data.columns)
+
+    return fig1, fig2
+
+
+def get_heatmap_data(df, clinic, start_date, end_date, admit):
     date_filtered = df[
         (df["Clinic Name"] == clinic)
         & (df["Check-In Time"] >= start_date)
         & (df["Check-In Time"] <= end_date)
         & (df["Admit Source"].isin(admit))
-    ]
+        ]
     grouped = date_filtered.groupby(
         ["Days of Wk", "Weekday Number", "Check-In Hour", "Hour", "Time"]
     ).agg({"Number of Records": "sum"})
     grouped = grouped.reset_index()
+    grouped.sort_values(by=['Weekday Number', 'Hour', 'Time'], inplace=True)
     grouped_AM = grouped[grouped["Time"] == "AM"]
     grouped_PM = grouped[grouped["Time"] == "PM"]
     final = pd.concat([grouped_AM, grouped_PM], ignore_index=True)
-    original_row_order = final['Days of Wk'].unique()  # Preserves the original order of 'Y'
-    original_col_order = final['Check-In Hour'].unique()
+    original_row_order = final[
+        "Days of Wk"
+    ].unique()
+    original_col_order = final["Check-In Hour"].unique()
     heatmap_data = final.pivot_table(
         index="Days of Wk",
         columns="Check-In Hour",
         values="Number of Records",
         fill_value=0,
     )
-    heatmap_data = heatmap_data.reindex(index=original_row_order, columns=original_col_order, fill_value=0)
-
-    fig = go.Figure(
-        go.Heatmap(z=heatmap_data.values, x=heatmap_data.columns ,y=heatmap_data.index, text=heatmap_data.values,texttemplate="%{text}",
-                    textfont={"size":12}, showscale=False),
-        layout=go.Layout(
-            xaxis=dict(
-                side='top',  # Place x-axis labels at the top
-                tickangle=-90
-            ),
-            margin=go.layout.Margin(
-                l=0, #left margin
-                r=0, #right margin
-                b=0, #bottom margin
-            )
-        )
+    return heatmap_data.reindex(
+        index=original_row_order, columns=original_col_order, fill_value=0
     )
 
-    return fig
+def draw_heatmap(z,x,y):
+    hover = [[f"{round(val)} Patients records" for val in row] for row in z]
+    return go.Figure(
+        go.Heatmap(
+            z=z,
+            x=x,
+            y=y,
+            text=z,
+            texttemplate="%{text}",
+            textfont={"size": 12},
+            showscale=False,
+            hovertext=hover,
+            hoverinfo="text",
+        ),
+        layout=go.Layout(
+            xaxis=dict(side="top", tickangle=-90, fixedrange=True),
+            yaxis=dict(fixedrange=True),  # Place x-axis labels at the top
+            margin=go.layout.Margin(
+                l=0,  # left margin
+                r=0,  # right margin
+                b=0,  # bottom margin
+            ),
+        ),
+    )
 
-
-# Run the server
 if __name__ == "__main__":
-    app.run_server(port=8080)
+    app.run_server(debug=True)
