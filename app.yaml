@@ -1,0 +1,7 @@
+runtime: python310
+handlers:
+- url: /.*
+  script: auto
+automatic_scaling:
+    max_instances: 1
+entrypoint: python app_eig.py
