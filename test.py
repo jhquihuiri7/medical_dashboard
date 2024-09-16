@@ -38,17 +38,3 @@ df = pd.read_csv(DATA_PATH.joinpath("clinical_analytics.csv.gz"))
 # realizar preprocesamiento de fecha
 df = preprocesamiento(df)
 
-date_filtered = df[(df['Check-In Time']>='2014-01-01') & (df['Check-In Time']<='2014-12-31')]
-grouped = date_filtered.groupby(['Days of Wk','Weekday Number','Check-In Hour','Hour','Time']).agg({'Number of Records':'sum'})
-grouped.reset_index(level=0, inplace=True)
-grouped.reset_index(level=0, inplace=True)
-grouped.reset_index(level=0, inplace=True)
-grouped.reset_index(level=0, inplace=True)
-grouped.reset_index(level=0, inplace=True)
-grouped.sort_values(by=['Weekday Number','Hour','Time'], inplace=True)
-grouped_AM = grouped[grouped["Time"]=="AM"]
-grouped_PM = grouped[grouped["Time"]=="PM"]
-final = pd.concat([grouped_AM, grouped_PM], ignore_index=True)
-print(final)
-
-

@@ -6,6 +6,8 @@ from datetime import datetime as dt
 import pathlib
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
+
 
 
 ############# Elements
@@ -45,6 +47,7 @@ df = preprocesamiento(df)
 
 nombres_clinicas = sorted(df["Clinic Name"].unique())
 admit_source = sorted(df["Admit Source"].unique())
+
 
 #####################################################
 # Estructura App
@@ -118,7 +121,7 @@ app.layout = html.Div(
         ),
         html.Div(
             children=[
-                html.H3("Patient Volume", className="font-bold text-center text-3xl"),
+                html.H3("Patient Volume", className="font-bold text-center text-3xl py-8"),
                 html.Hr(),
                 dcc.Graph(
                     className="hidden sm:flex",
@@ -130,6 +133,12 @@ app.layout = html.Div(
                     id="heat_map_vertical",
                     config=config,
                 ),
+                html.H3("Patient Wait Time and Satisfactory Scores", className="font-bold text-center text-3xl py-8"),
+                html.Hr(),
+                html.Div(
+                    id="output-div",
+                    className="flex flex-col",
+                )
             ],
             className="flex-initial w-[100%] sm:w-[70%]",
         ),
@@ -138,27 +147,32 @@ app.layout = html.Div(
 
 
 @app.callback(
-    [Output("heat_map", "figure"),Output("heat_map_vertical", "figure")],
+    [Output("heat_map", "figure"),Output("heat_map_vertical", "figure"),Output('output-div', 'children')],
     Input("clinic-dropdown", "value"),
     Input("date-picker-range", "start_date"),
     Input("date-picker-range", "end_date"),
     Input("admit-dropdown", "value"),
 )
-def data(clinic, start_date, end_date, admit):
-    heatmap_data = get_heatmap_data(df, clinic, start_date, end_date, admit)
+def plots(clinic, start_date, end_date, admit):
+    filter = data(df, clinic, start_date, end_date, admit)
+    heatmap_data = get_heatmap_data(filter)
+    departments = ['Cardiology', 'Neurology', 'Gastroenterology', 'Nephrology', 'Emergency']
+    table_data = get_table_data(filter, departments)
     fig1 = draw_heatmap(heatmap_data.values, heatmap_data.columns, heatmap_data.index)
     fig2 = draw_heatmap(heatmap_data.values.T, heatmap_data.index, heatmap_data.columns)
+    table= draw_table(table_data)
+    return fig1, fig2, table
 
-    return fig1, fig2
-
-
-def get_heatmap_data(df, clinic, start_date, end_date, admit):
-    date_filtered = df[
+def data(df, clinic, start_date, end_date, admit):
+    return df[
         (df["Clinic Name"] == clinic)
         & (df["Check-In Time"] >= start_date)
         & (df["Check-In Time"] <= end_date)
         & (df["Admit Source"].isin(admit))
         ]
+
+def get_heatmap_data(filter):
+    date_filtered = filter
     grouped = date_filtered.groupby(
         ["Days of Wk", "Weekday Number", "Check-In Hour", "Hour", "Time"]
     ).agg({"Number of Records": "sum"})
@@ -205,6 +219,61 @@ def draw_heatmap(z,x,y):
             ),
         ),
     )
+def get_table_data(filter, departments):
+
+    table_data = {
+        department: {
+            'Care Score': filter[filter["Department"] == department]['Care Score'].reset_index(drop=True).tolist()
+        }
+        for department in departments
+    }
+
+    return table_data
+
+def draw_table(table_data):
+
+    layout = go.Layout(
+                            height=96,
+        xaxis=dict(
+            showgrid=True,
+            zeroline=False,
+            showticklabels=False,
+        ),
+        yaxis=dict(
+            showticklabels=False,  # Hide y-axis labels
+            showgrid=False,  # Hide y-axis grid lines
+            zeroline=False  # Hide y-axis line at zero
+        ),
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",  # Transparent background outside the plot
+        plot_bgcolor="rgba(0,0,0,0)",
+                        )
+    return [html.Div(
+        children=[
+            html.Div(department, className="w-[20%]"),
+            html.Div("PLOT",className="w-[40%]"),
+            html.Div(
+            children=[
+                dcc.Graph(
+                    config={'displayModeBar': False},
+                    id=f"{department}",
+                    figure=go.Figure(
+                        layout=layout,
+        data=dict(
+            x=content['Care Score'],
+            y=np.full(len(content['Care Score']), 0),
+            mode='markers',  # Only markers, no lines
+            marker=dict(size=10, color='lime')
+        )
+    )
+                )
+            ],
+            className="w-[40%]"),
+        ],
+        className="flex flex-row h-24 bg-white-200 even:bg-gray-100 content-center items-center"
+    ) for department, content in table_data.items()
+                              ]
+
 
 if __name__ == "__main__":
     app.run_server(debug=True)
