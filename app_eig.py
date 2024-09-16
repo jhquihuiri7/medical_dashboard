@@ -48,6 +48,23 @@ admit_source = sorted(df["Admit Source"].unique())
 #####################################################
 # Estructura App
 external_scripts = [{"src": "https://cdn.tailwindcss.com"}]
+config = {
+             "displaylogo": False,
+             "modeBarButtonsToRemove": [
+                 "zoom",
+                 "pan",
+                 "zoom"
+                 "autoScale",
+                 "resetScale",
+             ],
+             "toImageButtonOptions": {
+                 "format": "png",
+                 "filename": "VolumenPacientes",
+                 "height": 700,
+                 "width": 1300,
+                 "scale": 1,
+             },
+         }
 app = dash.Dash(
     __name__,
     external_scripts=external_scripts,
@@ -105,43 +122,12 @@ app.layout = html.Div(
                 dcc.Graph(
                     className="hidden sm:flex",
                     id="heat_map",
-                    config={
-                        "displaylogo": False,
-                        "modeBarButtonsToRemove": [
-                            "zoom",
-                            "pan",
-                            "zoom"
-                            "autoScale",
-                            "resetScale",
-                        ],
-                        "toImageButtonOptions": {
-                            "format": "png",  # one of png, svg, jpeg, webp
-                            "filename": "VolumenPacientes",
-                            "height": 700,
-                            "width": 1300,
-                            "scale": 1,  # Multiply title/legend/axis/canvas sizes by this factor
-                        },
-                    },
+                    config= config,
                 ),
                 dcc.Graph(
                     className="flex sm:hidden",
                     id="heat_map_vertical",
-                    config={
-                        "displaylogo": False,
-                        "modeBarButtonsToRemove": [
-                            "zoom",
-                            "pan",
-                            "autoScale",
-                            "resetScale",
-                        ],
-                        "toImageButtonOptions": {
-                            "format": "png",  # one of png, svg, jpeg, webp
-                            "filename": "VolumenPacientes",
-                            "height": 700,
-                            "width": 1300,
-                            "scale": 1,  # Multiply title/legend/axis/canvas sizes by this factor
-                        },
-                    },
+                    config=config,
                 ),
             ],
             className="flex-initial w-[100%] sm:w-[70%]",
