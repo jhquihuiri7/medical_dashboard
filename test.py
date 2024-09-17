@@ -38,3 +38,5 @@ df = pd.read_csv(DATA_PATH.joinpath("clinical_analytics.csv.gz"))
 # realizar preprocesamiento de fecha
 df = preprocesamiento(df)
 
+print(df['Department'].unique())
+

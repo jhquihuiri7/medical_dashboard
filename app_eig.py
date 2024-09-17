@@ -7,9 +7,6 @@ import pathlib
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-
-
-
 ############# Elements
 def preprocesamiento(df):
     # Llenar las categorias vacias con 'No Identificado'
@@ -31,7 +28,6 @@ def preprocesamiento(df):
     )  # Datetime -> int(hour) + AM/PM
     df["Hour"] = df["Check-In Hour"].str[:3]
     df["Time"] = df["Check-In Hour"].str[3:]
-
     return df
 
 
@@ -45,6 +41,7 @@ df = pd.read_csv(DATA_PATH.joinpath("clinical_analytics.csv.gz"))
 # realizar preprocesamiento de fecha
 df = preprocesamiento(df)
 
+
 nombres_clinicas = sorted(df["Clinic Name"].unique())
 admit_source = sorted(df["Admit Source"].unique())
 
@@ -52,7 +49,8 @@ admit_source = sorted(df["Admit Source"].unique())
 #####################################################
 # Estructura App
 external_scripts = [{"src": "https://cdn.tailwindcss.com"}]
-config = {
+def set_config(img_name):
+    return {
              "displaylogo": False,
              "modeBarButtonsToRemove": [
                  "zoom",
@@ -63,7 +61,7 @@ config = {
              ],
              "toImageButtonOptions": {
                  "format": "png",
-                 "filename": "VolumenPacientes",
+                 "filename": img_name,
                  "height": 700,
                  "width": 1300,
                  "scale": 1,
@@ -74,31 +72,31 @@ app = dash.Dash(
     external_scripts=external_scripts,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
-app.title = "Clinical Analytics Dashboard"
+app.title = "Dashboard Análisis Clínico"
 app.layout = html.Div(
     className="flex flex-col justify-around bg-white p-6 sm:flex-row",
     children=[
         html.Div(
             children=[
                 html.H1(
-                    "Clinical Analytics", className="text-[#2c8cff] text-4xl font-bold"
+                    "Análisis Clínico", className="text-[#2c8cff] text-4xl font-bold"
                 ),
                 html.H2(
-                    "Welcome to the Clinical Analytics Dashboard",
+                    "Bienvenidos al Dashboard Análisis Clínico",
                     className="text-5xl font-bold py-8",
                 ),
                 html.P(
-                    "Explore clinic patient volume by time of day, waiting time, and care score. Click on the heatmap to visualize patient experience at different time points.",
+                    "Explora el volumen de pacientes en la clínica según la hora del día, el tiempo de espera y la puntuación de atención. Haz clic en el mapa de calor para visualizar la experiencia del paciente en diferentes momentos.",
                     className="text-justify pb-8",
                 ),
-                html.Label("Select Clinic", className="font-bold pb-5"),
+                html.Label("Seleccionar Clínica", className="font-bold pb-5"),
                 dcc.Dropdown(
                     nombres_clinicas,
-                    nombres_clinicas[0],
+                    nombres_clinicas[2],
                     id="clinic-dropdown",
                     className="pb-8",
                 ),
-                html.Label("Select Check-In Time", className="font-bold pb-5"),
+                html.Label("Seleccionar Hora de Registro", className="font-bold pb-5"),
                 dcc.DatePickerRange(
                     id="date-picker-range",
                     className="pb-8",
@@ -108,7 +106,7 @@ app.layout = html.Div(
                     start_date=df["Check-In Time"].dt.date.min(),
                     end_date=df["Check-In Time"].dt.date.max(),
                 ),
-                html.Label("Select Admit Source", className="font-bold pb-5"),
+                html.Label("Seleccionar Fuente de Admisión", className="font-bold pb-5"),
                 dcc.Dropdown(
                     admit_source,
                     admit_source,
@@ -121,24 +119,32 @@ app.layout = html.Div(
         ),
         html.Div(
             children=[
-                html.H3("Patient Volume", className="font-bold text-center text-3xl py-8"),
+                html.H3("Volumen de Pacientes", className="font-bold text-center text-3xl py-8"),
                 html.Hr(),
                 dcc.Graph(
                     className="hidden sm:flex",
                     id="heat_map",
-                    config= config,
+                    config= set_config('VolumenPacientes'),
                 ),
                 dcc.Graph(
                     className="flex sm:hidden",
                     id="heat_map_vertical",
-                    config=config,
+                    config=set_config('VolumenPacientes'),
                 ),
-                html.H3("Patient Wait Time and Satisfactory Scores", className="font-bold text-center text-3xl py-8"),
+                html.H3("Distribución de tiempo de espera por departamento", className="font-bold text-center text-3xl py-8"),
                 html.Hr(),
-                html.Div(
-                    id="output-div",
-                    className="flex flex-col",
-                )
+                dcc.Graph(
+                    id="boxplot-waiting_time",
+                    className="",
+                    config=set_config('TiempoEspera')
+                ),
+                html.H3("Distribución de puntajes de calificación por departamento", className="font-bold text-center text-3xl py-8"),
+                html.Hr(),
+                dcc.Graph(
+                    id="boxplot-score",
+                    className="",
+                    config=set_config('Calificacion')
+                ),
             ],
             className="flex-initial w-[100%] sm:w-[70%]",
         ),
@@ -147,29 +153,34 @@ app.layout = html.Div(
 
 
 @app.callback(
-    [Output("heat_map", "figure"),Output("heat_map_vertical", "figure"),Output('output-div', 'children')],
+    [Output("heat_map", "figure"),Output("heat_map_vertical", "figure"),Output('boxplot-waiting_time', 'figure'),Output('boxplot-score', 'figure')],
     Input("clinic-dropdown", "value"),
     Input("date-picker-range", "start_date"),
     Input("date-picker-range", "end_date"),
     Input("admit-dropdown", "value"),
 )
 def plots(clinic, start_date, end_date, admit):
-    filter = data(df, clinic, start_date, end_date, admit)
-    heatmap_data = get_heatmap_data(filter)
-    departments = ['Cardiology', 'Neurology', 'Gastroenterology', 'Nephrology', 'Emergency']
-    table_data = get_table_data(filter, departments)
+    filter_data = data(df, clinic, start_date, end_date, admit)
+    heatmap_data = get_heatmap_data(filter_data)
+    departments = ['General Surgery', 'Orthopedics', 'Neurosurgery', 'Plastic Surgery', 'Urology']
     fig1 = draw_heatmap(heatmap_data.values, heatmap_data.columns, heatmap_data.index)
     fig2 = draw_heatmap(heatmap_data.values.T, heatmap_data.index, heatmap_data.columns)
-    table= draw_table(table_data)
-    return fig1, fig2, table
+
+    filter_departments = filter_data[filter_data['Department'].isin(departments)]
+
+    fig3 = draw_boxplot(departments, filter_departments,'Wait Time Min')
+    fig4 = draw_boxplot(departments, filter_departments, 'Care Score')
+
+    return fig1, fig2, fig3, fig4
 
 def data(df, clinic, start_date, end_date, admit):
-    return df[
+    new_df = df[
         (df["Clinic Name"] == clinic)
         & (df["Check-In Time"] >= start_date)
         & (df["Check-In Time"] <= end_date)
         & (df["Admit Source"].isin(admit))
         ]
+    return new_df
 
 def get_heatmap_data(filter):
     date_filtered = filter
@@ -219,61 +230,28 @@ def draw_heatmap(z,x,y):
             ),
         ),
     )
-def get_table_data(filter, departments):
 
-    table_data = {
-        department: {
-            'Care Score': filter[filter["Department"] == department]['Care Score'].reset_index(drop=True).tolist()
-        }
-        for department in departments
-    }
-
-    return table_data
-
-def draw_table(table_data):
-
-    layout = go.Layout(
-                            height=96,
-        xaxis=dict(
-            showgrid=True,
-            zeroline=False,
-            showticklabels=False,
-        ),
-        yaxis=dict(
-            showticklabels=False,  # Hide y-axis labels
-            showgrid=False,  # Hide y-axis grid lines
-            zeroline=False  # Hide y-axis line at zero
-        ),
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",  # Transparent background outside the plot
-        plot_bgcolor="rgba(0,0,0,0)",
-                        )
-    return [html.Div(
-        children=[
-            html.Div(department, className="w-[20%]"),
-            html.Div("PLOT",className="w-[40%]"),
-            html.Div(
-            children=[
-                dcc.Graph(
-                    config={'displayModeBar': False},
-                    id=f"{department}",
-                    figure=go.Figure(
-                        layout=layout,
-        data=dict(
-            x=content['Care Score'],
-            y=np.full(len(content['Care Score']), 0),
-            mode='markers',  # Only markers, no lines
-            marker=dict(size=10, color='lime')
+def draw_boxplot(departments, filter_departments, column):
+    fig = go.Figure(
+        layout=go.Layout(
+            template='plotly_white',
+            xaxis=dict(fixedrange=True),
+            yaxis=dict(fixedrange=True),  # Place x-axis labels at the top
+            margin=go.layout.Margin(
+                t=10,
+                l=0,  # left margin
+                r=0,  # right margin
+                b=0,  # bottom margin
+            ),
         )
     )
-                )
-            ],
-            className="w-[40%]"),
-        ],
-        className="flex flex-row h-24 bg-white-200 even:bg-gray-100 content-center items-center"
-    ) for department, content in table_data.items()
-                              ]
+    for department in departments:
+        fig.add_trace(
+            go.Box(y=filter_departments[filter_departments['Department'] == department][column],
+                   name=department),
+        )
 
+    return fig
 
 if __name__ == "__main__":
     app.run_server(debug=True)
