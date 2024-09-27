@@ -73,6 +73,7 @@ app = dash.Dash(
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
 app.title = "Dashboard Análisis Clínico"
+app._favicon = "favicon.ico"
 app.layout = html.Div(
     className="flex flex-col justify-around bg-white p-6 sm:flex-row",
     children=[
@@ -254,4 +255,4 @@ def draw_boxplot(departments, filter_departments, column):
     return fig
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=False)
